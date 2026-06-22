@@ -1,0 +1,1377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VXP Respiratory Trace Analyser</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #ffffff; --bg2: #f7f7f8; --bg3: #eff0f1;
+    --border: #e2e3e5; --border2: #d0d1d3;
+    --text: #111112; --text2: #5a5b5f; --text3: #8a8b8f;
+    --green: #1D9E75; --orange: #D85A30; --purple: #7F77DD;
+    --green-bg: #edfaf5; --orange-bg: #fdf2ee;
+    --warn: #b45309; --warn-bg: #fffbeb; --warn-border: #fcd34d;
+    --red: #c0392b; --red-bg: #fdf0ef;
+    --radius: 8px; --radius-sm: 5px;
+    --shadow: 0 1px 4px rgba(0,0,0,0.08);
+  }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg2); color: var(--text); font-size: 14px; min-height: 100vh; }
+  .container { max-width: 1200px; margin: 0 auto; padding: 24px 20px; display: flex; flex-direction: column; gap: 20px; }
+  h1 { font-size: 20px; font-weight: 600; }
+  .subtitle { font-size: 13px; color: var(--text3); margin-top: 3px; }
+  .card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 20px; box-shadow: var(--shadow); }
+  .sec-title { font-size: 11px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; }
+  .grid-4 { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 10px; }
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field label { font-size: 12px; color: var(--text2); font-weight: 500; }
+  .field input { border: 1px solid var(--border2); border-radius: var(--radius-sm); padding: 7px 10px; font-size: 13px; color: var(--text); background: var(--bg); width: 100%; transition: border-color 0.15s; }
+  .field input:focus { outline: none; border-color: var(--purple); }
+  .drop-zone { border: 1.5px dashed var(--border2); border-radius: var(--radius-sm); padding: 10px 8px; text-align: center; cursor: pointer; background: var(--bg2); font-size: 12px; color: var(--text3); transition: all 0.15s; user-select: none; min-height: 88px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; }
+  .drop-zone:hover, .drop-zone.drag-over { background: #f0f0ff; border-color: var(--purple); color: var(--purple); }
+  .drop-zone.loaded { border-style: solid; border-color: var(--green); background: var(--green-bg); color: var(--green); cursor: default; }
+  .drop-zone.outlier { border-style: solid; border-color: var(--warn-border); background: var(--warn-bg); color: var(--warn); cursor: default; }
+  .dz-fname { font-size: 11px; font-weight: 600; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dz-pts { font-size: 10px; opacity: 0.85; margin: 1px 0; }
+  .dz-toggle { display: flex; border: 1.5px solid currentColor; border-radius: 4px; overflow: hidden; margin-top: 4px; }
+  .dz-toggle button { flex: 1; padding: 3px 8px; border: none; background: transparent; color: inherit; cursor: pointer; font-size: 10px; font-weight: 700; transition: all 0.12s; }
+  .dz-toggle button.active { background: currentColor; color: white; }
+  .dz-toggle button.active .btn-lbl { color: white; }
+  .btn-lbl { display: block; }
+  button.std { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border: 1px solid var(--border2); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.15s; white-space: nowrap; }
+  button.std:hover { background: var(--bg2); }
+  button.primary { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border: 1px solid var(--text); border-radius: var(--radius-sm); background: var(--text); color: #fff; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.15s; }
+  button.primary:hover:not(:disabled) { background: #333; }
+  button.primary:disabled { opacity: 0.4; cursor: not-allowed; }
+  .outlier-banner { background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: var(--radius-sm); padding: 10px 14px; font-size: 12px; color: var(--warn); display: none; margin-top: 10px; line-height: 1.5; }
+  .outlier-banner ul { margin: 6px 0 0 16px; }
+  .outlier-banner li { margin-bottom: 3px; }
+  .error-banner { background: var(--red-bg); border: 1px solid #f5c6c6; border-radius: var(--radius-sm); padding: 8px 12px; font-size: 12px; color: var(--red); display: none; margin-top: 8px; }
+  .tech-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
+  .cond-block { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
+  .cond-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; cursor: pointer; background: var(--bg2); transition: background 0.15s; }
+  .cond-header:hover { background: var(--bg3); }
+  .cond-meta { display: flex; align-items: center; gap: 12px; }
+  .cond-num { font-size: 12px; font-weight: 700; color: var(--text3); min-width: 18px; }
+  .cond-lbl { font-size: 14px; font-weight: 600; }
+  .cond-params { font-size: 12px; color: var(--text3); }
+  .cond-arrow { font-size: 14px; color: var(--text3); transition: transform 0.2s; display: inline-block; }
+  .cond-plots { display: none; padding: 16px; border-top: 1px solid var(--border); }
+  .cond-plots.open { display: block; }
+  .plot-group-title { font-size: 11px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.04em; margin: 12px 0 6px; }
+  .plot-wrap { margin-bottom: 14px; }
+  .plot-img { width: 100%; border: 1px solid var(--border); border-radius: var(--radius-sm); display: block; cursor: pointer; transition: opacity 0.15s; }
+  .plot-img:hover { opacity: 0.88; }
+  .save-hint { font-size: 11px; color: var(--text3); margin-top: 4px; }
+  .tbl-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+  table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+  th { text-align: left; background: var(--bg2); color: var(--text2); font-weight: 600; padding: 7px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 6px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--bg2); }
+  .sig { color: var(--red); font-weight: 600; }
+  .ns { color: var(--text3); }
+  .footer-note { font-size: 11px; color: var(--text3); margin-top: 8px; line-height: 1.7; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+  .status-row { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+  .status-txt { font-size: 12px; color: var(--text3); }
+
+  .tab-bar { display:flex; gap:0; border-bottom:2px solid var(--border); background:var(--bg); position:sticky; top:0; z-index:100; padding:0 20px; }
+  .tab-btn { padding:12px 20px; border:none; background:transparent; font-size:13px; font-weight:500; color:var(--text3); cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-2px; transition:all 0.15s; }
+  .tab-btn:hover { color:var(--text); background:var(--bg2); }
+  .tab-btn.active { color:var(--purple); border-bottom-color:var(--purple); font-weight:600; }
+  .tab-content { display:none; }
+  .tab-content.active { display:block; }
+
+</style>
+</head>
+<body>
+<div class="tab-bar">
+  <button class="tab-btn active" id="tab-btn-sine" onclick="switchTab('sine')">📈 Sinusoidal gold standard</button>
+  <button class="tab-btn" id="tab-btn-patient" onclick="switchTab('patient')">🫁 Patient trace gold standard</button>
+</div>
+<div class="tab-content active" id="tab-sine">
+<div class="container">
+
+  <div>
+    <h1>VXP Respiratory Trace Analyser</h1>
+    <p class="subtitle">Multi-condition · Sinusoidal gold standard · Pearson r · RMSE · Peak-to-trough amplitude · Phase shift · Per-file raw/scaled toggle</p>
+  </div>
+
+  <div class="card">
+    <p class="sec-title">Technique names</p>
+    <div class="grid-2">
+      <div class="field"><label style="color:var(--green);">Technique A name</label><input type="text" id="tech-a-name" value="Technique A" placeholder="e.g. Varian RPM" oninput="updateTechNames()"></div>
+      <div class="field"><label style="color:var(--orange);">Technique B name</label><input type="text" id="tech-b-name" value="Technique B" placeholder="e.g. C-RAD" oninput="updateTechNames()"></div>
+    </div>
+    <div style="margin-top:12px;display:flex;gap:8px;align-items:center;">
+      <label class="std" style="cursor:pointer;margin:0;">📂 Load session<input type="file" accept=".json" style="display:none" onchange="loadSession(event)"></label>
+      <span style="font-size:11px;color:var(--text3);">Restore a previously saved session to continue where you left off</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <p class="sec-title">Add condition</p>
+    <div class="grid-4" style="margin-bottom:14px;">
+      <div class="field"><label>Condition label</label><input type="text" id="gs-label" placeholder="e.g. Patient 1, 10mm, 4s"></div>
+      <div class="field"><label>Insert size (cm)</label><input type="number" id="gs-insert" step="0.1" min="0" placeholder="e.g. 3.0"></div>
+      <div class="field"><label>Amplitude half-range (mm)</label><input type="number" id="gs-amp" value="5.0" step="0.1" min="0.01" oninput="recheckOutliers()"></div>
+      <div class="field"><label>Period (s)</label><input type="number" id="gs-period" value="4.0" step="0.1" min="0.1"></div>
+      <div class="field"><label>Phase (°)</label><input type="number" id="gs-phase" value="0" step="1"></div>
+    </div>
+    <hr>
+    <p class="tech-label" id="label-A-title" style="color:var(--green);margin-top:10px;">Technique A — 3 repeats</p>
+    <div class="grid-3" id="zones-A" style="margin-bottom:14px;"></div>
+    <p class="tech-label" id="label-B-title" style="color:var(--orange);">Technique B — 3 repeats</p>
+    <div class="grid-3" id="zones-B"></div>
+    <div class="outlier-banner" id="outlier-banner">
+      ⚠️ <strong>Amplitude outlier detected</strong> — one or more files differ from the gold standard P2T by more than 25%. Toggle Raw / Scaled on the affected file, or check you have the right file selected.
+      <ul id="outlier-list"></ul>
+    </div>
+    <div class="error-banner" id="error-msg"></div>
+    <input type="file" id="hidden-file" accept=".vxp,.txt,.csv" style="display:none" onchange="onFileChosen(event)">
+    <div class="status-row">
+      <button class="primary" id="process-btn" onclick="processCondition()" disabled>+ Add condition</button>
+      <span class="status-txt" id="ready-status">Upload all 6 files to continue</span>
+    </div>
+  </div>
+
+  <div id="plots-section" style="display:none;">
+    <p class="sec-title" style="margin-bottom:10px;">Conditions — click row to expand plots</p>
+    <div id="cond-blocks" style="display:flex;flex-direction:column;gap:10px;"></div>
+  </div>
+
+  <div id="table-wrap" style="display:none;">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+      <p class="sec-title" style="margin:0;flex:1;">Summary table</p>
+      <button class="std" onclick="exportIndivCSV()">⬇ Export individual CSV</button>
+      <button class="std" onclick="saveSession()">💾 Save session</button>
+      <label class="std" style="cursor:pointer;margin:0;">📂 Load session<input type="file" accept=".json" style="display:none" onchange="loadSession(event)"></label>
+      <button class="std" onclick="exportCSV()">⬇ Export CSV</button>
+    </div>
+    <div class="tbl-scroll">
+      <table><thead id="table-head"></thead><tbody id="summary-body"></tbody></table>
+    </div>
+    <p class="footer-note">
+      * p&lt;0.05 &nbsp; ** p&lt;0.01 &nbsp; *** p&lt;0.001 &nbsp; ns = not significant (p ≥ 0.05)<br>
+      <strong>p vs 1:</strong> one-sample t-test — are the 3 Pearson r values significantly different from a perfect correlation (r = 1)?<br>
+      <strong>p vs 0:</strong> one-sample t-test — is the mean phase shift significantly different from zero?<br>
+      <strong>Paired A vs B:</strong> paired t-test comparing techniques across the 3 repeats.<br>
+      <strong>P2T:</strong> peak-to-trough — full breathing excursion in mm (= 2 × amplitude half-range).<br>
+      Note: with n = 3 repeats, statistical power is low. Interpret p-values alongside mean ± SD.
+    </p>
+  </div>
+
+</div>
+<script>
+const OUTLIER_THRESH = 0.25;
+const pending   = { A:[null,null,null], B:[null,null,null] };
+const useScaled = { A:[true,true,true], B:[true,true,true] };
+const enabled   = { A:[true,true,true], B:[true,true,true] };
+let currentTarget = null;
+const conditions = [];
+
+// Build drop zones
+['A','B'].forEach(t => {
+  const container = document.getElementById('zones-'+t);
+  [0,1,2].forEach(i => {
+    const dz = document.createElement('div');
+    dz.className='drop-zone'; dz.id=`dz-${t}-${i}`;
+    dz.textContent=`Repeat ${i+1}`;
+    dz.onclick = e => dzClick(e,t,i);
+    dz.ondragover = e => onDrag(e,t,i);
+    dz.ondragleave = () => offDrag(t,i);
+    dz.ondrop = e => onDrop(e,t,i);
+    container.appendChild(dz);
+  });
+});
+
+function techA(){ return document.getElementById('tech-a-name').value.trim()||'Technique A'; }
+function techB(){ return document.getElementById('tech-b-name').value.trim()||'Technique B'; }
+function updateTechNames(){
+  document.getElementById('label-A-title').textContent=`${techA()} — 3 repeats`;
+  document.getElementById('label-B-title').textContent=`${techB()} — 3 repeats`;
+  if(conditions.length) updateTable();
+}
+
+function dzClick(e,tech,idx){
+  if(e.target.tagName==='BUTTON'||e.target.classList.contains('btn-lbl')) return;
+  currentTarget={tech,idx};
+  document.getElementById('hidden-file').value='';
+  document.getElementById('hidden-file').click();
+}
+function onDrag(e,t,i){ e.preventDefault(); document.getElementById(`dz-${t}-${i}`).classList.add('drag-over'); }
+function offDrag(t,i){ document.getElementById(`dz-${t}-${i}`).classList.remove('drag-over'); }
+function onDrop(e,t,i){ e.preventDefault(); offDrag(t,i); currentTarget={tech:t,idx:i}; readFile(e.dataTransfer.files[0]); }
+function onFileChosen(e){ if(e.target.files[0]) readFile(e.target.files[0]); }
+
+function readFile(file){
+  if(!currentTarget) return;
+  const{tech,idx}=currentTarget;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    const parsed=parseVXP(ev.target.result);
+    if(!parsed){ showError(`Could not parse ${file.name}`); return; }
+    showError('');
+    pending[tech][idx]={...parsed,fname:file.name,examID:parseExamID(file.name)};
+    useScaled[tech][idx]=true;
+    renderDZ(tech,idx);
+    checkReady();
+    recheckOutliers();
+  };
+  reader.readAsText(file);
+}
+
+function parseExamID(fname){
+  // Match first _digits_digits pattern, ignore date suffix
+  // zzzSimRTcom_16929_13_20260310_... -> '16929 13'
+  // zzzSimRTcom_16937_17.vxp          -> '16937 17'
+  const m = fname.match(/_(\d+)_(\d+)/);
+  if(m) return m[1]+' '+m[2];
+  return fname.replace(/\.[^.]+$/,'');
+}
+
+function parseVXP(text){
+  const lines=text.split(/\r?\n/);
+  let fs=25,sf=1,inData=false;
+  const raw=[];
+  for(const line of lines){
+    const t=line.trim();
+    if(!t) continue;
+    if(t.toLowerCase().startsWith('samples_per_second')){ const v=parseFloat(t.split('=')[1]); if(!isNaN(v)&&v>0) fs=v; }
+    if(t.toLowerCase().startsWith('scale_factor')){ const v=parseFloat(t.split('=')[1]); if(!isNaN(v)&&v>0) sf=v; }
+    if(t==='[Data]'){ inData=true; continue; }
+    if(!inData) continue;
+    if(t.startsWith('[')) break;
+    const v=parseFloat(t.split(',')[0]);
+    if(!isNaN(v)) raw.push(v);
+  }
+  if(raw.length<10) return null;
+  return{ samplesRaw:raw, samplesScaled:raw.map(v=>v*sf), sf, fs };
+}
+
+function getSamples(tech,idx){
+  const p=pending[tech][idx]; if(!p) return null;
+  return useScaled[tech][idx] ? p.samplesScaled : p.samplesRaw;
+}
+
+function dcRemove(sig){ const m=sig.reduce((a,b)=>a+b,0)/sig.length; return sig.map(v=>v-m); }
+function peakTrough(sig){ return Math.max(...sig)-Math.min(...sig); }
+function getGsP2T(){ return (parseFloat(document.getElementById('gs-amp').value)||0)*2; }
+
+function renderDZ(tech,idx){
+  const p=pending[tech][idx]; if(!p) return;
+  const dz=document.getElementById(`dz-${tech}-${idx}`);
+  const ptRaw   =peakTrough(dcRemove(p.samplesRaw));
+  const ptScaled=peakTrough(dcRemove(p.samplesScaled));
+  const isScaled=useScaled[tech][idx];
+  const activePt=isScaled?ptScaled:ptRaw;
+  const gsP2T=getGsP2T();
+  const isOutlier=gsP2T>0&&Math.abs(activePt-gsP2T)/gsP2T>OUTLIER_THRESH;
+  dz.classList.remove('drag-over','loaded','outlier');
+  dz.classList.add(isOutlier?'outlier':'loaded');
+  const short=p.fname.length>26?p.fname.slice(0,24)+'…':p.fname;
+  const isEnabled=enabled[tech][idx];
+  dz.style.opacity=isEnabled?'1':'0.45';
+  dz.innerHTML=`
+    <div class="dz-fname" title="${p.fname}">${isOutlier?'⚠ ':'✓ '}${short}</div>
+    <div class="dz-pts">Raw: ${ptRaw.toFixed(2)} mm &nbsp;|&nbsp; ×${p.sf}: ${ptScaled.toFixed(2)} mm</div>
+    <div class="dz-toggle">
+      <button onclick="setScale('${tech}',${idx},false)" class="${!isScaled?'active':''}"><span class="btn-lbl">Raw</span></button>
+      <button onclick="setScale('${tech}',${idx},true)"  class="${isScaled?'active':''}"><span class="btn-lbl">×${p.sf}</span></button>
+    </div>
+    <button onclick="toggleEnabled('${tech}',${idx})" style="margin-top:5px;font-size:10px;padding:3px 8px;border-radius:4px;border:1.5px solid ${isEnabled?'#c0392b':'#1D9E75'};background:${isEnabled?'#fdf0ef':'#edfaf5'};color:${isEnabled?'#c0392b':'#1D9E75'};cursor:pointer;font-weight:700;width:100%;">${isEnabled?'⊘ Exclude repeat':'✓ Include repeat'}</button>`;
+}
+
+function setScale(tech,idx,scaled){
+  useScaled[tech][idx]=scaled;
+  renderDZ(tech,idx);
+  recheckOutliers();
+}
+
+function toggleEnabled(tech,idx){
+  enabled[tech][idx]=!enabled[tech][idx];
+  renderDZ(tech,idx);
+  recheckOutliers();
+  checkReady();
+}
+
+function recheckOutliers(){
+  const gsP2T=getGsP2T();
+  const outliers=[];
+  ['A','B'].forEach(t=>[0,1,2].forEach(i=>{
+    const p=pending[t][i]; if(!p) return;
+    renderDZ(t,i);
+    const samples=getSamples(t,i);
+    const pt=peakTrough(dcRemove(samples));
+    if(gsP2T>0&&Math.abs(pt-gsP2T)/gsP2T>OUTLIER_THRESH){
+      const name=t==='A'?techA():techB();
+      const mode=useScaled[t][i]?`scaled ×${p.sf}`:'raw';
+      const pct=((Math.abs(pt-gsP2T)/gsP2T)*100).toFixed(0);
+      outliers.push(`<strong>${name} repeat ${i+1}</strong> — ${p.fname} [${mode}]: detected P2T = ${pt.toFixed(2)} mm, expected ~${gsP2T.toFixed(1)} mm (${pct}% deviation)`);
+    }
+  }));
+  const banner=document.getElementById('outlier-banner');
+  document.getElementById('outlier-list').innerHTML=outliers.map(o=>`<li>${o}</li>`).join('');
+  banner.style.display=outliers.length?'block':'none';
+}
+
+function checkReady(){
+  const allLoaded=pending.A.every(x=>x)&&pending.B.every(x=>x);
+  const nA=enabled.A.filter((e,i)=>e&&pending.A[i]).length;
+  const nB=enabled.B.filter((e,i)=>e&&pending.B[i]).length;
+  const ok=allLoaded&&nA>=1&&nB>=1;
+  document.getElementById('process-btn').disabled=!ok;
+  if(!allLoaded) document.getElementById('ready-status').textContent='Upload all 6 files to continue';
+  else if(nA<1||nB<1) document.getElementById('ready-status').textContent='At least 1 repeat per technique must be included';
+  else{const w=(nA<3||nB<3)?` (n=${nA}A, n=${nB}B — reduced)`:'';document.getElementById('ready-status').textContent='Ready'+w+' — check for warnings above';}
+}
+
+function showError(msg){ const el=document.getElementById('error-msg'); el.textContent=msg; el.style.display=msg?'block':'none'; }
+
+// Signal processing
+function unitVar(sig){ const m=sig.reduce((a,b)=>a+b,0)/sig.length; const s=Math.sqrt(sig.reduce((a,v)=>a+(v-m)**2,0)/sig.length)||1; return sig.map(v=>(v-m)/s); }
+function buildGold(len,half,period,phase,fs){ const ps=period*fs,pr=phase*Math.PI/180; return Array.from({length:len},(_,i)=>half*Math.sin(2*Math.PI*i/ps+pr)); }
+function slideFind(dc,gl){ const sL=dc.length,gL=gl.length,ns=unitVar(dc),ng=unitVar(gl); let best=0,bc=-Infinity; for(let s=0;s<=gL-sL;s++){let sm=0;for(let i=0;i<sL;i++)sm+=ns[i]*ng[s+i];const c=sm/sL;if(c>bc){bc=c;best=s;}}return best; }
+function pearsonR(a,b){ const n=a.length,ma=a.reduce((x,y)=>x+y,0)/n,mb=b.reduce((x,y)=>x+y,0)/n; let num=0,da2=0,db2=0; for(let i=0;i<n;i++){const da=a[i]-ma,db=b[i]-mb;num+=da*db;da2+=da*da;db2+=db*db;} return num/Math.sqrt(da2*db2); }
+function rmse(a,b){ return Math.sqrt(a.reduce((s,v,i)=>s+(v-b[i])**2,0)/a.length); }
+
+function analyseFile(tech,idx,halfAmp,periodSec,phaseDeg){
+  const p=pending[tech][idx];
+  const samples=getSamples(tech,idx);
+  const{fs}=p;
+  const sigDC=dcRemove(samples);
+  const gl=buildGold(samples.length*2,halfAmp,periodSec,phaseDeg,fs);
+  const start=slideFind(sigDC,gl);
+  const goldSeg=gl.slice(start,start+samples.length);
+  const examID=pending[tech][idx].examID||'';
+  return{ r:pearsonR(sigDC,goldSeg), rms:rmse(sigDC,goldSeg), ptDiff:peakTrough(sigDC)-halfAmp*2, phase:(start/(periodSec*fs))*360, sigDC, goldSeg, fs, examID };
+}
+
+// Statistics
+function mean(a){ return a.reduce((x,y)=>x+y,0)/a.length; }
+function sd(a){ const m=mean(a); return Math.sqrt(a.reduce((s,v)=>s+(v-m)**2,0)/(a.length-1)); }
+function tOS(a,mu){ const n=a.length,m=mean(a),s=sd(a); return pT(Math.abs((m-mu)/(s/Math.sqrt(n))),n-1); }
+function tPaired(a,b){ const d=a.map((v,i)=>v-b[i]),n=d.length,m=mean(d),s=sd(d); return pT(Math.abs(m/(s/Math.sqrt(n))),n-1); }
+function pT(t,df){ return Math.min(1,bI(df/2,0.5,df/(df+t*t))); }
+function bI(a,b,x){ if(x<=0)return 0;if(x>=1)return 1;const lb=lG(a)+lG(b)-lG(a+b);return Math.exp(Math.log(x)*a+Math.log(1-x)*b-lb)/a*bCF(a,b,x); }
+function bCF(a,b,x){ let c=1,d=1-(a+b)*x/(a+1);if(Math.abs(d)<1e-30)d=1e-30;d=1/d;let h=d;for(let m=1;m<=200;m++){let m2=2*m,aa=m*(b-m)*x/((a-1+m2)*(a+m2));d=1+aa*d;if(Math.abs(d)<1e-30)d=1e-30;c=1+aa/c;if(Math.abs(c)<1e-30)c=1e-30;d=1/d;h*=d*c;aa=-(a+m)*(a+b+m)*x/((a+m2)*(a+1+m2));d=1+aa*d;if(Math.abs(d)<1e-30)d=1e-30;c=1+aa/c;if(Math.abs(c)<1e-30)c=1e-30;d=1/d;const del=d*c;h*=del;if(Math.abs(del-1)<3e-7)break;}return h; }
+function lG(x){ const c=[76.18009172947146,-86.50532032941677,24.01409824083091,-1.231739572450155,0.1208650973866179e-2,-0.5395239384953e-5];let y=x,tmp=x+5.5;tmp=(x+0.5)*Math.log(tmp)-tmp;let ser=1.000000000190015;for(let j=0;j<6;j++){y++;ser+=c[j]/y;}return tmp+Math.log(2.5066282746310005*ser/x); }
+function pStars(p){ if(p<0.001)return'***';if(p<0.01)return'**';if(p<0.05)return'*';return'ns'; }
+function fmtP(p){ const s=pStars(p); return`<span class="${s==='ns'?'ns':'sig'}">${p<0.001?'<0.001':p.toFixed(3)} ${s}</span>`; }
+function fmtMS(m,s,dec){ return`${m.toFixed(dec)} ± ${s.toFixed(dec)}`; }
+
+// Chart rendering
+function ds(arr,fs,max){ if(arr.length<=max)return{data:arr,times:arr.map((_,i)=>+(i/fs).toFixed(3))};const step=Math.floor(arr.length/max),out=[],times=[];for(let i=0;i<arr.length;i+=step){out.push(arr[i]);times.push(+(i/fs).toFixed(3));}return{data:out.slice(0,max),times:times.slice(0,max)}; }
+
+function renderToDataURL(datasets,timeLabels,W,H){
+  const dpr=Math.max(window.devicePixelRatio||2,2);
+  const canvas=document.createElement('canvas');
+  canvas.width=W*dpr; canvas.height=H*dpr;
+  canvas.style.width=W+'px'; canvas.style.height=H+'px';
+  const ctx=canvas.getContext('2d');
+  ctx.scale(dpr,dpr);
+  ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,W,H);
+  const n=timeLabels.length, tick=Math.max(1,Math.floor(n/10));
+  // Boost line widths and font sizes for crisp, readable output
+  const boostedDatasets=datasets.map(d=>({...d,
+    borderWidth: (d.borderWidth||2)*2.5,
+    pointRadius: 0,
+    borderCapStyle:'round',
+    borderJoinStyle:'round',
+  }));
+  const chart=new Chart(ctx,{type:'line',data:{labels:timeLabels,datasets:boostedDatasets},options:{
+    animation:false, responsive:false, devicePixelRatio:dpr,
+    plugins:{
+      legend:{labels:{font:{size:18,weight:'500'},boxWidth:24,padding:20,color:'#222'}}
+    },
+    scales:{
+      x:{
+        ticks:{font:{size:16,weight:'700'},color:'#000',maxRotation:0,callback:(v,i)=>i%tick===0?timeLabels[i].toFixed(1):''},
+        grid:{color:'rgba(0,0,0,0.2)',lineWidth:1.5},
+        border:{color:'#000',width:2},
+        title:{display:true,text:'time (s)',font:{size:17,weight:'700'},color:'#000',padding:{top:10}}
+      },
+      y:{
+        ticks:{font:{size:16,weight:'700'},color:'#000'},
+        grid:{color:'rgba(0,0,0,0.2)',lineWidth:1.5},
+        border:{color:'#000',width:2},
+        title:{display:true,text:'amplitude (mm)',font:{size:17,weight:'700'},color:'#000',padding:{bottom:10}}
+      }
+    }
+  }});
+  const url=canvas.toDataURL('image/png',1.0); chart.destroy(); return url;
+}
+
+function dlImg(url,fname){ const a=document.createElement('a');a.href=url;a.download=fname;document.body.appendChild(a);a.click();document.body.removeChild(a); }
+
+function renderPlots(condIdx){
+  const c=conditions[condIdx];
+  const tA=c.techAName,tB=c.techBName;
+  const MAX=600,W=1200,HO=400,HS=280;
+  const fsA=(c.resultsA[0]||{fs:25}).fs,fsB=(c.resultsB[0]||{fs:25}).fs;
+  const slug=c.label.replace(/[^a-z0-9]/gi,'_');
+  if(!c.resultsA.length&&!c.resultsB.length) return;
+  const firstRes=c.resultsA[0]||c.resultsB[0];
+  const dGov=ds(firstRes.goldSeg,firstRes.fs,MAX);
+  const ovURL=renderToDataURL([
+    {label:'Gold standard',data:dGov.data,borderColor:'#7F77DD',borderWidth:2,pointRadius:0,tension:0.3},
+    ...c.resultsA.map((r,i)=>({label:`${tA} rep ${i+1}`,data:ds(r.sigDC,fsA,MAX).data,borderColor:'#1D9E75',borderWidth:1.5,pointRadius:0,tension:0.3,borderDash:i===1?[5,3]:i===2?[2,4]:undefined})),
+    ...c.resultsB.map((r,i)=>({label:`${tB} rep ${i+1}`,data:ds(r.sigDC,fsB,MAX).data,borderColor:'#D85A30',borderWidth:1.5,pointRadius:0,tension:0.3,borderDash:i===1?[5,3]:i===2?[2,4]:undefined})),
+  ],dGov.times,W,HO);
+  const ovImg=document.getElementById(`img-${condIdx}-overlay`);
+  ovImg.src=ovURL; ovImg.onclick=()=>dlImg(ovURL,`${slug}_overlay.png`);
+
+  [[c.resultsA,'A','#1D9E75',tA,fsA],[c.resultsB,'B','#D85A30',tB,fsB]].forEach(([res,tech,col,name,fs])=>{
+    [0,1,2].forEach(rep=>{
+      const dS=ds(res[rep].sigDC,fs,MAX),dG=ds(res[rep].goldSeg,fs,MAX);
+      const url=renderToDataURL([
+        {label:'Gold standard',data:dG.data,borderColor:'#7F77DD',borderWidth:2,pointRadius:0,tension:0.3},
+        {label:`${name} rep ${rep+1}`,data:dS.data,borderColor:col,borderWidth:2,pointRadius:0,tension:0.3},
+      ],dS.times,W,HS);
+      const img=document.getElementById(`img-${condIdx}-${tech}${rep}`);
+      img.src=url;
+      img.onclick=()=>dlImg(url,`${slug}_${name.replace(/[^a-z0-9]/gi,'_')}_rep${rep+1}.png`);
+    });
+  });
+}
+
+function togglePlots(condIdx){
+  const panel=document.getElementById(`plots-${condIdx}`);
+  const arrow=document.getElementById(`arrow-${condIdx}`);
+  const isOpen=panel.classList.contains('open');
+  panel.classList.toggle('open');
+  arrow.style.transform=isOpen?'':'rotate(180deg)';
+  if(!isOpen&&!panel.dataset.rendered){ panel.dataset.rendered='1'; setTimeout(()=>renderPlots(condIdx),40); }
+}
+
+function processCondition(){
+  const label=document.getElementById('gs-label').value.trim()||`Condition ${conditions.length+1}`;
+  const insertSize=document.getElementById('gs-insert').value.trim()||'';
+  const halfAmp=parseFloat(document.getElementById('gs-amp').value)||5;
+  const periodSec=parseFloat(document.getElementById('gs-period').value)||4;
+  const phaseDeg=parseFloat(document.getElementById('gs-phase').value)||0;
+  const tAName=techA(),tBName=techB();
+  const resultsA=[0,1,2].filter(i=>enabled.A[i]&&pending.A[i]).map(i=>analyseFile('A',i,halfAmp,periodSec,phaseDeg));
+  const resultsB=[0,1,2].filter(i=>enabled.B[i]&&pending.B[i]).map(i=>analyseFile('B',i,halfAmp,periodSec,phaseDeg));
+  const nA=resultsA.length, nB=resultsB.length;
+  const mA={r:resultsA.map(m=>m.r),rms:resultsA.map(m=>m.rms),ptDiff:resultsA.map(m=>m.ptDiff),phase:resultsA.map(m=>m.phase)};
+  const mB={r:resultsB.map(m=>m.r),rms:resultsB.map(m=>m.rms),ptDiff:resultsB.map(m=>m.ptDiff),phase:resultsB.map(m=>m.phase)};
+  const pA_r=tOS(mA.r,1),pA_ph=tOS(mA.phase,0);
+  const pB_r=tOS(mB.r,1),pB_ph=tOS(mB.phase,0);
+  const pPr=tPaired(mA.r,mB.r),pPpt=tPaired(mA.ptDiff,mB.ptDiff);
+  const idx=conditions.length;
+  conditions.push({label,insertSize,halfAmp,periodSec,phaseDeg,techAName:tAName,techBName:tBName,nA,nB,mA,mB,resultsA,resultsB,pA_r,pA_ph,pB_r,pB_ph,pPr,pPpt,
+    indivA:resultsA.map(r=>({examID:r.examID,r:r.r,rms:r.rms,ptDiff:r.ptDiff,phase:r.phase})),
+    indivB:resultsB.map(r=>({examID:r.examID,r:r.r,rms:r.rms,ptDiff:r.ptDiff,phase:r.phase}))
+  });
+  addConditionBlock(idx); updateTable(); resetForm();
+  document.getElementById('plots-section').style.display='block';
+  document.getElementById('table-wrap').style.display='block';
+  document.getElementById(`cond-${idx}`).scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+function addConditionBlock(idx){
+  const c=conditions[idx];
+  const tA=c.techAName,tB=c.techBName;
+  const repGrid=(tech,col,name)=>[0,1,2].map(rep=>`
+    <div class="plot-wrap">
+      <p class="plot-group-title" style="color:${col};">${name} — repeat ${rep+1}</p>
+      <img id="img-${idx}-${tech}${rep}" class="plot-img" alt="${name} rep ${rep+1}" title="Click to download PNG">
+      <p class="save-hint">⬇ Click image to download PNG</p>
+    </div>`).join('');
+  const div=document.createElement('div');
+  div.className='cond-block'; div.id=`cond-${idx}`;
+  div.innerHTML=`
+    <div class="cond-header" onclick="togglePlots(${idx})">
+      <div class="cond-meta">
+        <span class="cond-num">${idx+1}</span>
+        <span class="cond-lbl">${c.label}</span>
+        <span class="cond-params">${c.insertSize?c.insertSize+'cm &nbsp;|&nbsp; ':''}${(c.halfAmp*2).toFixed(1)} mm P2T &nbsp;|&nbsp; ${c.periodSec}s &nbsp;|&nbsp; ${c.phaseDeg}°</span>
+      </div>
+      <span class="cond-arrow" id="arrow-${idx}">▼</span>
+    </div>
+    <div class="cond-plots" id="plots-${idx}">
+      <div class="plot-wrap">
+        <p class="plot-group-title">All repeats — overlay</p>
+        <img id="img-${idx}-overlay" class="plot-img" alt="All repeats overlay" title="Click to download PNG">
+        <p class="save-hint">⬇ Click image to download PNG</p>
+      </div>
+      <div class="grid-3">${repGrid('A','#1D9E75',tA)}</div>
+      <div class="grid-3" style="margin-top:4px;">${repGrid('B','#D85A30',tB)}</div>
+      <div style="margin-top:16px;">
+        <p class="plot-group-title" style="margin-bottom:6px;">Individual trace metrics</p>
+        <div style="overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-sm);">
+          <table id="indiv-table-${idx}" style="font-size:11px;"></table>
+        </div>
+      </div>
+    </div>`;
+  document.getElementById('cond-blocks').appendChild(div);
+  renderIndivTable('indiv-table-'+idx, conditions[idx]);
+}
+
+function updateTable(){
+  const tA=conditions.length?conditions[0].techAName:techA();
+  const tB=conditions.length?conditions[0].techBName:techB();
+  document.getElementById('table-head').innerHTML=`
+    <tr>
+      <th rowspan="2">Condition</th><th rowspan="2">Insert (cm)</th><th rowspan="2">P2T gold (mm)</th>
+      <th colspan="4" style="color:var(--green);border-left:1px solid var(--border);">${tA}</th>
+      <th colspan="4" style="color:var(--orange);border-left:1px solid var(--border);">${tB}</th>
+      <th colspan="2" style="border-left:1px solid var(--border);">Paired A vs B</th>
+    </tr>
+    <tr>
+      <th style="border-left:1px solid var(--border);">r mean ± SD (p vs 1)</th>
+      <th>RMSE mm</th><th>P2T diff mm</th><th>Phase ° (p vs 0)</th>
+      <th style="border-left:1px solid var(--border);">r mean ± SD (p vs 1)</th>
+      <th>RMSE mm</th><th>P2T diff mm</th><th>Phase ° (p vs 0)</th>
+      <th style="border-left:1px solid var(--border);">p(r)</th><th>p(P2T diff)</th>
+    </tr>`;
+  document.getElementById('summary-body').innerHTML=conditions.map(c=>{
+    const{mA,mB,pA_r,pA_ph,pB_r,pB_ph,pPr,pPpt}=c;
+    return`<tr>
+      <td><strong>${c.label}</strong></td><td>${c.insertSize||'—'}</td><td>${(c.halfAmp*2).toFixed(1)}</td>
+      <td style="border-left:1px solid var(--border);">${fmtMS(mean(mA.r),sd(mA.r),3)} ${fmtP(pA_r)}${c.nA<3?' <span style="color:#b45309;font-size:10px;">(n='+c.nA+')</span>':''}</td>
+      <td>${fmtMS(mean(mA.rms),sd(mA.rms),2)}</td>
+      <td>${fmtMS(mean(mA.ptDiff),sd(mA.ptDiff),2)}</td>
+      <td>${fmtMS(mean(mA.phase),sd(mA.phase),1)} ${fmtP(pA_ph)}</td>
+      <td style="border-left:1px solid var(--border);">${fmtMS(mean(mB.r),sd(mB.r),3)} ${fmtP(pB_r)}</td>
+      <td>${fmtMS(mean(mB.rms),sd(mB.rms),2)}</td>
+      <td>${fmtMS(mean(mB.ptDiff),sd(mB.ptDiff),2)}</td>
+      <td>${fmtMS(mean(mB.phase),sd(mB.phase),1)} ${fmtP(pB_ph)}</td>
+      <td style="border-left:1px solid var(--border);">${fmtP(pPr)}</td>
+      <td>${fmtP(pPpt)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function resetForm(){
+  pending.A=[null,null,null]; pending.B=[null,null,null];
+  useScaled.A=[true,true,true]; useScaled.B=[true,true,true];
+  enabled.A=[true,true,true];  enabled.B=[true,true,true];
+
+  ['A','B'].forEach(t=>[0,1,2].forEach(i=>{
+    const dz=document.getElementById(`dz-${t}-${i}`);
+    dz.classList.remove('loaded','drag-over','outlier');
+    dz.textContent=`Repeat ${i+1}`;
+  }));
+  document.getElementById('gs-label').value='';
+  document.getElementById('gs-insert').value='';
+  document.getElementById('process-btn').disabled=true;
+  document.getElementById('ready-status').textContent='Upload all 6 files to continue';
+  document.getElementById('outlier-banner').style.display='none';
+  showError('');
+}
+
+function exportCSV(){
+  const tA=conditions.length?conditions[0].techAName:'Tech A';
+  const tB=conditions.length?conditions[0].techBName:'Tech B';
+  const hdr=['Condition','Insert size (cm)','Gold P2T (mm)',
+    `${tA} r mean`,`${tA} r SD`,`${tA} r p(vs 1)`,
+    `${tA} RMSE mean (mm)`,`${tA} RMSE SD`,
+    `${tA} P2T diff mean (mm)`,`${tA} P2T diff SD`,
+    `${tA} phase mean (deg)`,`${tA} phase SD`,`${tA} phase p(vs 0)`,
+    `${tB} r mean`,`${tB} r SD`,`${tB} r p(vs 1)`,
+    `${tB} RMSE mean (mm)`,`${tB} RMSE SD`,
+    `${tB} P2T diff mean (mm)`,`${tB} P2T diff SD`,
+    `${tB} phase mean (deg)`,`${tB} phase SD`,`${tB} phase p(vs 0)`,
+    'Paired p(r)','Paired p(P2T diff)'];
+  const rows=conditions.map(c=>{
+    const{mA,mB,pA_r,pA_ph,pB_r,pB_ph,pPr,pPpt}=c;
+    return[c.label,c.insertSize||'',(c.halfAmp*2).toFixed(1),
+      mean(mA.r).toFixed(3),sd(mA.r).toFixed(3),pA_r.toFixed(4),
+      mean(mA.rms).toFixed(2),sd(mA.rms).toFixed(2),
+      mean(mA.ptDiff).toFixed(2),sd(mA.ptDiff).toFixed(2),
+      mean(mA.phase).toFixed(1),sd(mA.phase).toFixed(1),pA_ph.toFixed(4),
+      mean(mB.r).toFixed(3),sd(mB.r).toFixed(3),pB_r.toFixed(4),
+      mean(mB.rms).toFixed(2),sd(mB.rms).toFixed(2),
+      mean(mB.ptDiff).toFixed(2),sd(mB.ptDiff).toFixed(2),
+      mean(mB.phase).toFixed(1),sd(mB.phase).toFixed(1),pB_ph.toFixed(4),
+      pPr.toFixed(4),pPpt.toFixed(4)];
+  });
+  const csv=[hdr,...rows].map(r=>r.map(v=>`"${v}"`).join(',')).join('\n');
+  const a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download='vxp_analysis_results.csv'; a.click();
+}
+
+updateTechNames();
+</script>
+</div><!-- end tab-sine -->
+
+<div class="tab-content" id="tab-patient">
+<div class="container">
+
+  <div>
+    <h1>VXP Respiratory Trace Analyser — Patient Trace</h1>
+    <p class="subtitle">Upload a master patient VXP trace · Snippets are matched to it via cross-correlation · Same metrics and statistics as sinusoidal tool</p>
+  </div>
+
+  <div class="card">
+    <p class="sec-title">Technique names</p>
+    <div class="grid-2">
+      <div class="field"><label style="color:var(--green);">Technique A name</label><input type="text" id="p-tech-a-name" value="Technique A" placeholder="e.g. Varian RPM" oninput="pUpdateTechNames()"></div>
+      <div class="field"><label style="color:var(--orange);">Technique B name</label><input type="text" id="p-tech-b-name" value="Technique B" placeholder="e.g. C-RAD" oninput="pUpdateTechNames()"></div>
+    </div>
+    <div style="margin-top:12px;display:flex;gap:8px;align-items:center;">
+      <label class="std" style="cursor:pointer;margin:0;">📂 Load session<input type="file" accept=".json" style="display:none" onchange="pLoadSession(event)"></label>
+      <span style="font-size:11px;color:var(--text3);">Restore a previously saved session to continue where you left off</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <p class="sec-title">Add condition</p>
+    <div class="grid-2" style="margin-bottom:14px;">
+      <div class="field"><label>Condition label</label><input type="text" id="p-gs-label" placeholder="e.g. Patient 1, free breathing"></div>
+      <div class="field"><label>Insert size (cm)</label><input type="number" id="p-gs-insert" step="0.1" min="0" placeholder="e.g. 3.0"></div>
+      <div class="field"><label>Master patient trace (.vxp)</label>
+        <div class="drop-zone" id="p-dz-master" onclick="pTriggerMaster()" ondragover="pOnDragM(event)" ondragleave="pOffDragM()" ondrop="pOnDropM(event)">Click or drop master VXP file</div>
+      </div>
+    </div>
+    <input type="file" id="p-hidden-master" accept=".vxp,.txt,.csv" style="display:none" onchange="pOnMasterChosen(event)">
+    <hr>
+    <p class="tech-label" id="p-label-A-title" style="color:var(--green);margin-top:10px;">Technique A — 3 repeats</p>
+    <div class="grid-3" id="p-zones-A" style="margin-bottom:14px;"></div>
+    <p class="tech-label" id="p-label-B-title" style="color:var(--orange);">Technique B — 3 repeats</p>
+    <div class="grid-3" id="p-zones-B"></div>
+    <div class="outlier-banner" id="p-outlier-banner">
+      ⚠️ <strong>Amplitude outlier detected</strong> — one or more snippets differ from the master trace P2T by more than 25%. Toggle Raw/Scaled or check the file.
+      <ul id="p-outlier-list"></ul>
+    </div>
+    <div class="error-banner" id="p-error-msg"></div>
+    <input type="file" id="p-hidden-file" accept=".vxp,.txt,.csv" style="display:none" onchange="pOnFileChosen(event)">
+    <div class="status-row">
+      <button class="primary" id="p-process-btn" onclick="pProcessCondition()" disabled>+ Add condition</button>
+      <span class="status-txt" id="p-ready-status">Upload master trace and all 6 snippet files to continue</span>
+    </div>
+  </div>
+
+  <div id="p-plots-section" style="display:none;">
+    <p class="sec-title" style="margin-bottom:10px;">Conditions — click row to expand plots</p>
+    <div id="p-cond-blocks" style="display:flex;flex-direction:column;gap:10px;"></div>
+  </div>
+
+  <div id="p-table-wrap" style="display:none;">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+      <p class="sec-title" style="margin:0;flex:1;">Summary table</p>
+      <button class="std" onclick="pExportIndivCSV()">⬇ Export individual CSV</button>
+      <button class="std" onclick="pSaveSession()">💾 Save session</button>
+      <label class="std" style="cursor:pointer;margin:0;">📂 Load session<input type="file" accept=".json" style="display:none" onchange="pLoadSession(event)"></label>
+      <button class="std" onclick="pExportCSV()">⬇ Export CSV</button>
+    </div>
+    <div class="tbl-scroll">
+      <table><thead id="p-table-head"></thead><tbody id="p-summary-body"></tbody></table>
+    </div>
+    <p class="footer-note">
+      * p&lt;0.05 &nbsp; ** p&lt;0.01 &nbsp; *** p&lt;0.001 &nbsp; ns = not significant (p ≥ 0.05)<br>
+      <strong>Gold standard:</strong> matched segment of the master patient trace found via normalised cross-correlation.<br>
+      <strong>p vs 1:</strong> one-sample t-test — are the Pearson r values significantly different from perfect correlation (r=1)?<br>
+      <strong>p vs 0:</strong> one-sample t-test — is the mean phase shift significantly different from zero?<br>
+      <strong>Paired A vs B:</strong> paired t-test comparing techniques across included repeats.<br>
+      <strong>P2T:</strong> peak-to-trough amplitude in mm. Note: with n≤3, statistical power is low.
+    </p>
+  </div>
+
+</div>
+</div>
+
+<script>
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+function switchTab(tab){
+  document.querySelectorAll('.tab-content').forEach(el=>el.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(el=>el.classList.remove('active'));
+  document.getElementById('tab-'+tab).classList.add('active');
+  document.getElementById('tab-btn-'+tab).classList.add('active');
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PATIENT TRACE TAB
+// ══════════════════════════════════════════════════════════════════════════════
+const pPending = { A:[null,null,null], B:[null,null,null] };
+const pUseScaled = { A:[true,true,true], B:[true,true,true] };
+const pEnabled   = { A:[true,true,true], B:[true,true,true] };
+let pMaster = null;
+let pMasterUseScaled = true;
+let pMasterInverted = false;
+const pInverted = { A:[false,false,false], B:[false,false,false] };
+let pCurrentTarget = null;
+const pConditions = [];
+
+// Build patient drop zones
+['A','B'].forEach(t => {
+  const container = document.getElementById('p-zones-'+t);
+  [0,1,2].forEach(i => {
+    const dz = document.createElement('div');
+    dz.className='drop-zone'; dz.id=`p-dz-${t}-${i}`;
+    dz.textContent=`Repeat ${i+1}`;
+    dz.onclick = e => pDzClick(e,t,i);
+    dz.ondragover = e => pOnDrag(e,t,i);
+    dz.ondragleave = () => pOffDrag(t,i);
+    dz.ondrop = e => pOnDrop(e,t,i);
+    container.appendChild(dz);
+  });
+});
+
+function pTechA(){ return document.getElementById('p-tech-a-name').value.trim()||'Technique A'; }
+function pTechB(){ return document.getElementById('p-tech-b-name').value.trim()||'Technique B'; }
+function pUpdateTechNames(){
+  document.getElementById('p-label-A-title').textContent=`${pTechA()} — 3 repeats`;
+  document.getElementById('p-label-B-title').textContent=`${pTechB()} — 3 repeats`;
+  if(pConditions.length) pUpdateTable();
+}
+
+function pTriggerMaster(){ document.getElementById('p-hidden-master').value=''; document.getElementById('p-hidden-master').click(); }
+function pOnDragM(e){ e.preventDefault(); document.getElementById('p-dz-master').classList.add('drag-over'); }
+function pOffDragM(){ document.getElementById('p-dz-master').classList.remove('drag-over'); }
+function pOnDropM(e){ e.preventDefault(); pOffDragM(); pReadMaster(e.dataTransfer.files[0]); }
+function pOnMasterChosen(e){ if(e.target.files[0]) pReadMaster(e.target.files[0]); }
+
+function pReadMaster(file){
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    const parsed=parseVXP(ev.target.result);
+    if(!parsed){ pShowError(`Could not parse master file: ${file.name}`); return; }
+    pMaster={...parsed,fname:file.name};
+    pMasterUseScaled=true;
+    pRenderMasterDZ(file.name);
+    pShowError('');
+    pCheckReady();
+    pRecheckOutliers();
+  };
+  reader.readAsText(file);
+}
+
+function pGetMasterSamples(){
+  if(!pMaster) return null;
+  const s=pMasterUseScaled ? pMaster.samplesScaled : pMaster.samplesRaw;
+  return pMasterInverted ? s.map(v=>-v) : s;
+}
+
+function pRenderMasterDZ(fname){
+  const p=pMaster; if(!p) return;
+  const dz=document.getElementById('p-dz-master');
+  const ptRaw=peakTrough(dcRemove(p.samplesRaw));
+  const ptScaled=peakTrough(dcRemove(p.samplesScaled));
+  const isScaled=pMasterUseScaled;
+  dz.classList.remove('drag-over');
+  dz.classList.add('loaded');
+  const short=(fname||'master').length>30?(fname||'master').slice(0,28)+'…':(fname||'master');
+  dz.innerHTML=`
+    <div class="dz-fname" title="${fname||''}">✓ ${short}</div>
+    <div class="dz-pts">${p.samplesRaw.length} samples · ${p.fs}Hz &nbsp;|&nbsp; Raw P2T: ${ptRaw.toFixed(2)} mm &nbsp;|&nbsp; ×${p.sf}: ${ptScaled.toFixed(2)} mm</div>
+    <div class="dz-toggle">
+      <button onclick="pSetMasterScale(false)" class="${!isScaled?'active':''}"><span class="btn-lbl">Raw</span></button>
+      <button onclick="pSetMasterScale(true)"  class="${isScaled?'active':''}"><span class="btn-lbl">×${p.sf}</span></button>
+    </div>
+    <button onclick="pSetMasterInvert()" style="margin-top:5px;font-size:10px;padding:3px 8px;border-radius:4px;border:1.5px solid ${pMasterInverted?'#7F77DD':'#d0d1d3'};background:${pMasterInverted?'#f0f0ff':'transparent'};color:${pMasterInverted?'#7F77DD':'#8a8b8f'};cursor:pointer;font-weight:700;width:100%;">${pMasterInverted?'↕ Inverted (click to revert)':'↕ Invert signal'}</button>`;
+}
+
+function pSetMasterScale(scaled){
+  pMasterUseScaled=scaled;
+  pRenderMasterDZ(pMaster?pMaster.fname:'');
+  pRecheckOutliers();
+}
+
+function pSetMasterInvert(){
+  pMasterInverted=!pMasterInverted;
+  pRenderMasterDZ(pMaster?pMaster.fname:'');
+  pRecheckOutliers();
+}
+
+function pDzClick(e,tech,idx){
+  if(e.target.tagName==='BUTTON'||e.target.classList.contains('btn-lbl')) return;
+  pCurrentTarget={tech,idx};
+  document.getElementById('p-hidden-file').value='';
+  document.getElementById('p-hidden-file').click();
+}
+function pOnDrag(e,t,i){ e.preventDefault(); document.getElementById(`p-dz-${t}-${i}`).classList.add('drag-over'); }
+function pOffDrag(t,i){ document.getElementById(`p-dz-${t}-${i}`).classList.remove('drag-over'); }
+function pOnDrop(e,t,i){ e.preventDefault(); pOffDrag(t,i); pCurrentTarget={tech:t,idx:i}; pReadFile(e.dataTransfer.files[0]); }
+function pOnFileChosen(e){ if(e.target.files[0]) pReadFile(e.target.files[0]); }
+
+function pReadFile(file){
+  if(!pCurrentTarget) return;
+  const{tech,idx}=pCurrentTarget;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    const parsed=parseVXP(ev.target.result);
+    if(!parsed){ pShowError(`Could not parse ${file.name}`); return; }
+    pShowError('');
+    pPending[tech][idx]={...parsed,fname:file.name,examID:parseExamID(file.name)};
+    pUseScaled[tech][idx]=true;
+    pRenderDZ(tech,idx);
+    pCheckReady();
+    pRecheckOutliers();
+  };
+  reader.readAsText(file);
+}
+
+function pGetSamples(tech,idx){
+  const p=pPending[tech][idx]; if(!p) return null;
+  const s=pUseScaled[tech][idx]?p.samplesScaled:p.samplesRaw;
+  return pInverted[tech][idx] ? s.map(v=>-v) : s;
+}
+
+function pRenderDZ(tech,idx){
+  const p=pPending[tech][idx]; if(!p) return;
+  const dz=document.getElementById(`p-dz-${tech}-${idx}`);
+  const ptRaw=peakTrough(dcRemove(p.samplesRaw));
+  const ptScaled=peakTrough(dcRemove(p.samplesScaled));
+  const isScaled=pUseScaled[tech][idx];
+  const activePt=isScaled?ptScaled:ptRaw;
+  // Compare against master P2T if available
+  const masterPt=pMaster?peakTrough(dcRemove(pGetMasterSamples())):0;
+  const isOutlier=masterPt>0&&Math.abs(activePt-masterPt)/masterPt>0.25;
+  dz.classList.remove('drag-over','loaded','outlier');
+  dz.classList.add(isOutlier?'outlier':'loaded');
+  const short=p.fname.length>26?p.fname.slice(0,24)+'…':p.fname;
+  const isEnabled=pEnabled[tech][idx];
+  dz.style.opacity=isEnabled?'1':'0.45';
+  dz.innerHTML=`
+    <div class="dz-fname" title="${p.fname}">${isOutlier?'⚠ ':'✓ '}${short}</div>
+    <div class="dz-pts">Raw: ${ptRaw.toFixed(2)} mm &nbsp;|&nbsp; ×${p.sf}: ${ptScaled.toFixed(2)} mm</div>
+    <div class="dz-toggle">
+      <button onclick="pSetScale('${tech}',${idx},false)" class="${!isScaled?'active':''}"><span class="btn-lbl">Raw</span></button>
+      <button onclick="pSetScale('${tech}',${idx},true)"  class="${isScaled?'active':''}"><span class="btn-lbl">×${p.sf}</span></button>
+    </div>
+    <div style="display:flex;gap:4px;margin-top:5px;">
+      <button onclick="pToggleInvert('${tech}',${idx})" style="flex:1;font-size:10px;padding:3px 6px;border-radius:4px;border:1.5px solid ${pInverted[tech][idx]?'#7F77DD':'#d0d1d3'};background:${pInverted[tech][idx]?'#f0f0ff':'transparent'};color:${pInverted[tech][idx]?'#7F77DD':'#8a8b8f'};cursor:pointer;font-weight:700;">${pInverted[tech][idx]?'↕ Inverted':'↕ Invert'}</button>
+      <button onclick="pToggleEnabled('${tech}',${idx})" style="flex:1;font-size:10px;padding:3px 6px;border-radius:4px;border:1.5px solid ${isEnabled?'#c0392b':'#1D9E75'};background:${isEnabled?'#fdf0ef':'#edfaf5'};color:${isEnabled?'#c0392b':'#1D9E75'};cursor:pointer;font-weight:700;">${isEnabled?'⊘ Exclude':'✓ Include'}</button>
+    </div>`;
+}
+
+function pSetScale(tech,idx,scaled){ pUseScaled[tech][idx]=scaled; pRenderDZ(tech,idx); pRecheckOutliers(); }
+function pToggleEnabled(tech,idx){ pEnabled[tech][idx]=!pEnabled[tech][idx]; pRenderDZ(tech,idx); pRecheckOutliers(); pCheckReady(); }
+function pToggleInvert(tech,idx){ pInverted[tech][idx]=!pInverted[tech][idx]; pRenderDZ(tech,idx); pRecheckOutliers(); }
+
+function pRecheckOutliers(){
+  const masterPt=pMaster?peakTrough(dcRemove(pGetMasterSamples())):0;
+  const outliers=[];
+  ['A','B'].forEach(t=>[0,1,2].forEach(i=>{
+    const p=pPending[t][i]; if(!p) return;
+    pRenderDZ(t,i);
+    const samples=pGetSamples(t,i);
+    const pt=peakTrough(dcRemove(samples));
+    if(masterPt>0&&Math.abs(pt-masterPt)/masterPt>0.25){
+      const name=t==='A'?pTechA():pTechB();
+      const mode=pUseScaled[t][i]?`scaled ×${p.sf}`:'raw';
+      const pct=((Math.abs(pt-masterPt)/masterPt)*100).toFixed(0);
+      outliers.push(`<strong>${name} repeat ${i+1}</strong> — ${p.fname} [${mode}]: P2T = ${pt.toFixed(2)} mm, master P2T = ${masterPt.toFixed(2)} mm (${pct}% deviation)`);
+    }
+  }));
+  const banner=document.getElementById('p-outlier-banner');
+  document.getElementById('p-outlier-list').innerHTML=outliers.map(o=>`<li>${o}</li>`).join('');
+  banner.style.display=outliers.length?'block':'none';
+}
+
+function pCheckReady(){
+  const masterOk=!!pMaster;
+  const allLoaded=pPending.A.every(x=>x)&&pPending.B.every(x=>x);
+  const nA=pEnabled.A.filter((e,i)=>e&&pPending.A[i]).length;
+  const nB=pEnabled.B.filter((e,i)=>e&&pPending.B[i]).length;
+  const ok=masterOk&&allLoaded&&nA>=1&&nB>=1;
+  document.getElementById('p-process-btn').disabled=!ok;
+  if(!masterOk) document.getElementById('p-ready-status').textContent='Upload master patient trace first';
+  else if(!allLoaded) document.getElementById('p-ready-status').textContent='Upload all 6 snippet files to continue';
+  else if(nA<1||nB<1) document.getElementById('p-ready-status').textContent='At least 1 repeat per technique must be included';
+  else{ const w=(nA<3||nB<3)?` (n=${nA}A, n=${nB}B — reduced)`:''; document.getElementById('p-ready-status').textContent='Ready'+w+' — check for warnings above'; }
+}
+
+function pShowError(msg){ const el=document.getElementById('p-error-msg'); el.textContent=msg; el.style.display=msg?'block':'none'; }
+
+// Template matching — slide snippet along master to find best position
+function pSlideFind(snippetDC, masterDC){
+  const sLen=snippetDC.length, gLen=masterDC.length;
+  if(sLen>=gLen) return 0;
+  const ns=unitVar(snippetDC), nm=unitVar(masterDC);
+  let best=0, bestC=-Infinity;
+  for(let s=0;s<=gLen-sLen;s++){
+    let sum=0; for(let i=0;i<sLen;i++) sum+=ns[i]*nm[s+i];
+    const c=sum/sLen; if(c>bestC){bestC=c;best=s;}
+  }
+  return best;
+}
+
+function pSlideFindLimited(snippetDC, masterTiled, searchLimit){
+  const sLen=snippetDC.length;
+  const ns=unitVar(snippetDC);
+  // Pre-normalise the whole tiled master once for efficiency
+  const nm=unitVar(masterTiled);
+  let best=0, bestC=-Infinity;
+  for(let s=0;s<=searchLimit;s++){
+    let sum=0; for(let i=0;i<sLen;i++) sum+=ns[i]*nm[s+i];
+    const c=sum/sLen; if(c>bestC){bestC=c;best=s;}
+  }
+  return best;
+}
+
+// Resample signal from srcFs to dstFs using linear interpolation
+function resampleSignal(sig, srcFs, dstFs){
+  if(srcFs===dstFs) return sig;
+  const ratio=srcFs/dstFs;
+  const outLen=Math.round(sig.length/ratio);
+  return Array.from({length:outLen},(_,i)=>{
+    const pos=i*ratio;
+    const lo=Math.floor(pos), hi=Math.min(lo+1,sig.length-1);
+    const frac=pos-lo;
+    return sig[lo]*(1-frac)+sig[hi]*frac;
+  });
+}
+
+function pAnalyseFile(tech,idx){
+  const p=pPending[tech][idx];
+  const samples=pGetSamples(tech,idx);
+  const{fs}=p;
+  const masterFs=pMaster.fs;
+  const masterDC=dcRemove(pGetMasterSamples());
+
+  // If snippet and master have different sampling rates, resample snippet to master rate
+  // so cross-correlation compares signals on the same time base
+  const samplesResampled=fs!==masterFs ? resampleSignal(samples,fs,masterFs) : samples;
+  const snippetDC=dcRemove(samplesResampled);
+  const sLen=snippetDC.length;
+
+  // Tile master so sliding window never runs out of signal
+  const tilesNeeded=Math.max(3, Math.ceil((sLen+masterDC.length*2)/masterDC.length));
+  const masterTiled=[...Array(tilesNeeded)].flatMap(()=>masterDC);
+
+  // Search within one master cycle only
+  const searchLimit=Math.min(masterDC.length, masterTiled.length-sLen);
+  const start=pSlideFindLimited(snippetDC,masterTiled,searchLimit);
+
+  // Extract matched gold segment at master sample rate
+  const goldSeg=masterTiled.slice(start,start+sLen);
+
+  // For plotting: keep original snippet at its own fs, resample gold back to snippet fs
+  const snippetDC_orig=dcRemove(samples);
+  const goldForPlot=fs!==masterFs ? resampleSignal(goldSeg,masterFs,fs) : goldSeg;
+  // Trim or pad to match original snippet length
+  const plotLen=snippetDC_orig.length;
+  const goldPlot=goldForPlot.slice(0,plotLen);
+  while(goldPlot.length<plotLen) goldPlot.push(goldPlot[goldPlot.length-1]||0);
+
+  const posInMaster=start % masterDC.length;
+  const masterPt=peakTrough(masterDC);
+
+  const examID=pPending[tech][idx].examID||'';
+  return{
+    r: pearsonR(snippetDC,goldSeg),
+    rms: rmse(snippetDC,goldSeg),
+    ptDiff: peakTrough(snippetDC_orig)-masterPt,
+    phase: (posInMaster/masterFs)*360,
+    matchPos: posInMaster,
+    polarityInverted: false,
+    sigDC: snippetDC_orig,
+    goldSeg: goldPlot,
+    fs,
+    examID
+  };
+}
+
+function pProcessCondition(){
+  const label=document.getElementById('p-gs-label').value.trim()||`Condition ${pConditions.length+1}`;
+  const insertSize=document.getElementById('p-gs-insert').value.trim()||'';
+  const tAName=pTechA(), tBName=pTechB();
+  const resultsA=[0,1,2].filter(i=>pEnabled.A[i]&&pPending.A[i]).map(i=>pAnalyseFile('A',i));
+  const resultsB=[0,1,2].filter(i=>pEnabled.B[i]&&pPending.B[i]).map(i=>pAnalyseFile('B',i));
+  const nA=resultsA.length, nB=resultsB.length;
+  const anyInvA=resultsA.some(r=>r.polarityInverted);
+  const anyInvB=resultsB.some(r=>r.polarityInverted);
+  const mA={r:resultsA.map(m=>m.r),rms:resultsA.map(m=>m.rms),ptDiff:resultsA.map(m=>m.ptDiff),phase:resultsA.map(m=>m.phase)};
+  const mB={r:resultsB.map(m=>m.r),rms:resultsB.map(m=>m.rms),ptDiff:resultsB.map(m=>m.ptDiff),phase:resultsB.map(m=>m.phase)};
+  const pA_r=tOS(mA.r,1), pA_ph=tOS(mA.phase,0);
+  const pB_r=tOS(mB.r,1), pB_ph=tOS(mB.phase,0);
+  const pPr=tPaired(mA.r,mB.r), pPpt=tPaired(mA.ptDiff,mB.ptDiff);
+  const masterPt=peakTrough(dcRemove(pGetMasterSamples()));
+  const idx=pConditions.length;
+  pConditions.push({label,insertSize,techAName:tAName,techBName:tBName,nA,nB,masterPt,anyInvA,anyInvB,mA,mB,resultsA,resultsB,pA_r,pA_ph,pB_r,pB_ph,pPr,pPpt,
+    indivA:resultsA.map(r=>({examID:r.examID,r:r.r,rms:r.rms,ptDiff:r.ptDiff,phase:r.phase})),
+    indivB:resultsB.map(r=>({examID:r.examID,r:r.r,rms:r.rms,ptDiff:r.ptDiff,phase:r.phase}))
+  });
+  pAddConditionBlock(idx); pUpdateTable(); pResetForm();
+  document.getElementById('p-plots-section').style.display='block';
+  document.getElementById('p-table-wrap').style.display='block';
+  document.getElementById(`p-cond-${idx}`).scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+function pAddConditionBlock(idx){
+  const c=pConditions[idx];
+  const tA=c.techAName, tB=c.techBName;
+  const repGrid=(tech,col,name)=>[0,1,2].map(rep=>`
+    <div class="plot-wrap">
+      <p class="plot-group-title" style="color:${col};">${name} — repeat ${rep+1}</p>
+      <img id="p-img-${idx}-${tech}${rep}" class="plot-img" alt="${name} rep ${rep+1}" title="Click to download PNG">
+      <p class="save-hint">⬇ Click image to download PNG</p>
+    </div>`).join('');
+  const div=document.createElement('div');
+  div.className='cond-block'; div.id=`p-cond-${idx}`;
+  div.innerHTML=`
+    <div class="cond-header" onclick="pTogglePlots(${idx})">
+      <div class="cond-meta">
+        <span class="cond-num">${idx+1}</span>
+        <span class="cond-lbl">${c.label}</span>
+        <span class="cond-params">${c.insertSize?c.insertSize+'cm &nbsp;|&nbsp; ':''}Master P2T: ${c.masterPt.toFixed(1)} mm</span>
+      </div>
+      <span class="cond-arrow" id="p-arrow-${idx}">▼</span>
+    </div>
+    <div class="cond-plots" id="p-plots-${idx}">
+      <div class="plot-wrap">
+        <p class="plot-group-title">All repeats — overlay vs matched master segment</p>
+        <img id="p-img-${idx}-overlay" class="plot-img" alt="overlay" title="Click to download PNG">
+        <p class="save-hint">⬇ Click image to download PNG</p>
+      </div>
+      <div class="grid-3">${repGrid('A','#1D9E75',tA)}</div>
+      <div class="grid-3" style="margin-top:4px;">${repGrid('B','#D85A30',tB)}</div>
+      <div style="margin-top:16px;">
+        <p class="plot-group-title" style="margin-bottom:6px;">Individual trace metrics</p>
+        <div style="overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-sm);">
+          <table id="p-indiv-table-${idx}" style="font-size:11px;"></table>
+        </div>
+      </div>
+    </div>`;
+  document.getElementById('p-cond-blocks').appendChild(div);
+  renderIndivTable('p-indiv-table-'+idx, pConditions[idx]);
+}
+
+function pTogglePlots(condIdx){
+  const panel=document.getElementById(`p-plots-${condIdx}`);
+  const arrow=document.getElementById(`p-arrow-${condIdx}`);
+  const isOpen=panel.classList.contains('open');
+  panel.classList.toggle('open');
+  arrow.style.transform=isOpen?'':'rotate(180deg)';
+  if(!isOpen&&!panel.dataset.rendered){ panel.dataset.rendered='1'; setTimeout(()=>pRenderPlots(condIdx),40); }
+}
+
+function pRenderPlots(condIdx){
+  const c=pConditions[condIdx];
+  const tA=c.techAName, tB=c.techBName;
+  const MAX=600, W=1200, HO=400, HS=280;
+  const fsA=(c.resultsA[0]||{fs:25}).fs, fsB=(c.resultsB[0]||{fs:25}).fs;
+  const slug=c.label.replace(/[^a-z0-9]/gi,'_');
+  if(!c.resultsA.length&&!c.resultsB.length) return;
+  const firstRes=c.resultsA[0]||c.resultsB[0];
+  const dGov=ds(firstRes.goldSeg,firstRes.fs,MAX);
+
+  // Overlay — use first available result as gold reference for time axis
+  const ovURL=renderToDataURL([
+    {label:'Matched master segment',data:dGov.data,borderColor:'#7F77DD',borderWidth:2,pointRadius:0,tension:0.3},
+    ...c.resultsA.map((r,i)=>({label:`${tA} rep ${i+1}`,data:ds(r.sigDC,fsA,MAX).data,borderColor:'#1D9E75',borderWidth:1.5,pointRadius:0,tension:0.3,borderDash:i===1?[5,3]:i===2?[2,4]:undefined})),
+    ...c.resultsB.map((r,i)=>({label:`${tB} rep ${i+1}`,data:ds(r.sigDC,fsB,MAX).data,borderColor:'#D85A30',borderWidth:1.5,pointRadius:0,tension:0.3,borderDash:i===1?[5,3]:i===2?[2,4]:undefined})),
+  ],dGov.times,W,HO);
+  const ovImg=document.getElementById(`p-img-${condIdx}-overlay`);
+  ovImg.src=ovURL; ovImg.onclick=()=>dlImg(ovURL,`${slug}_overlay.png`);
+
+  [[c.resultsA,'A','#1D9E75',tA,fsA],[c.resultsB,'B','#D85A30',tB,fsB]].forEach(([res,tech,col,name,fs])=>{
+    res.forEach((r,rep)=>{
+      const dS=ds(r.sigDC,fs,MAX), dG=ds(r.goldSeg,fs,MAX);
+      const url=renderToDataURL([
+        {label:'Matched master segment',data:dG.data,borderColor:'#7F77DD',borderWidth:2,pointRadius:0,tension:0.3},
+        {label:`${name} rep ${rep+1}`,data:dS.data,borderColor:col,borderWidth:2,pointRadius:0,tension:0.3},
+      ],dS.times,W,HS);
+      const img=document.getElementById(`p-img-${condIdx}-${tech}${rep}`);
+      if(img){ img.src=url; img.onclick=()=>dlImg(url,`${slug}_${name.replace(/[^a-z0-9]/gi,'_')}_rep${rep+1}.png`); }
+    });
+  });
+}
+
+function pUpdateTable(){
+  const tA=pConditions.length?pConditions[0].techAName:pTechA();
+  const tB=pConditions.length?pConditions[0].techBName:pTechB();
+  document.getElementById('p-table-head').innerHTML=`
+    <tr>
+      <th rowspan="2">Condition</th><th rowspan="2">Insert (cm)</th><th rowspan="2">Master P2T (mm)</th>
+      <th colspan="4" style="color:var(--green);border-left:1px solid var(--border);">${tA}</th>
+      <th colspan="4" style="color:var(--orange);border-left:1px solid var(--border);">${tB}</th>
+      <th colspan="2" style="border-left:1px solid var(--border);">Paired A vs B</th>
+    </tr>
+    <tr>
+      <th style="border-left:1px solid var(--border);">r mean ± SD (p vs 1)</th>
+      <th>RMSE mm</th><th>P2T diff mm</th><th>Match offset °(p vs 0)</th>
+      <th style="border-left:1px solid var(--border);">r mean ± SD (p vs 1)</th>
+      <th>RMSE mm</th><th>P2T diff mm</th><th>Match offset ° (p vs 0)</th>
+      <th style="border-left:1px solid var(--border);">p(r)</th><th>p(P2T diff)</th>
+    </tr>`;
+  document.getElementById('p-summary-body').innerHTML=pConditions.map(c=>{
+    const{mA,mB,pA_r,pA_ph,pB_r,pB_ph,pPr,pPpt}=c;
+    return`<tr>
+      <td><strong>${c.label}</strong></td><td>${c.insertSize||'—'}</td><td>${c.masterPt.toFixed(1)}</td>
+      <td style="border-left:1px solid var(--border);">${fmtMS(mean(mA.r),sd(mA.r),3)} ${fmtP(pA_r)}${c.nA<3?' <span style="color:#b45309;font-size:10px;">(n='+c.nA+')</span>':''}${c.anyInvA?' <span style="color:#7F77DD;font-size:10px;" title="Polarity auto-corrected">↕</span>':''}</td>
+      <td>${fmtMS(mean(mA.rms),sd(mA.rms),2)}</td>
+      <td>${fmtMS(mean(mA.ptDiff),sd(mA.ptDiff),2)}</td>
+      <td>${fmtMS(mean(mA.phase),sd(mA.phase),1)} ${fmtP(pA_ph)}</td>
+      <td style="border-left:1px solid var(--border);">${fmtMS(mean(mB.r),sd(mB.r),3)} ${fmtP(pB_r)}${c.nB<3?' <span style="color:#b45309;font-size:10px;">(n='+c.nB+')</span>':''}</td>
+      <td>${fmtMS(mean(mB.rms),sd(mB.rms),2)}</td>
+      <td>${fmtMS(mean(mB.ptDiff),sd(mB.ptDiff),2)}</td>
+      <td>${fmtMS(mean(mB.phase),sd(mB.phase),1)} ${fmtP(pB_ph)}</td>
+      <td style="border-left:1px solid var(--border);">${fmtP(pPr)}</td>
+      <td>${fmtP(pPpt)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function pResetForm(){
+  pPending.A=[null,null,null]; pPending.B=[null,null,null];
+  pUseScaled.A=[true,true,true]; pUseScaled.B=[true,true,true];
+  pEnabled.A=[true,true,true];  pEnabled.B=[true,true,true];
+  pInverted.A=[false,false,false]; pInverted.B=[false,false,false];
+  pMaster=null; pMasterUseScaled=true; pMasterInverted=false;
+  ['A','B'].forEach(t=>[0,1,2].forEach(i=>{
+    const dz=document.getElementById(`p-dz-${t}-${i}`);
+    dz.classList.remove('loaded','drag-over','outlier');
+    dz.style.opacity='1';
+    dz.textContent=`Repeat ${i+1}`;
+  }));
+  const mdz=document.getElementById('p-dz-master');
+  mdz.classList.remove('loaded');
+  mdz.innerHTML='Click or drop master VXP file';
+  document.getElementById('p-gs-label').value='';
+  document.getElementById('p-gs-insert').value='';
+  document.getElementById('p-process-btn').disabled=true;
+  document.getElementById('p-ready-status').textContent='Upload master trace and all 6 snippet files to continue';
+  document.getElementById('p-outlier-banner').style.display='none';
+  pShowError('');
+}
+
+function pExportCSV(){
+  const tA=pConditions.length?pConditions[0].techAName:'Tech A';
+  const tB=pConditions.length?pConditions[0].techBName:'Tech B';
+  const hdr=['Condition','Insert size (cm)','Master P2T (mm)',
+    `${tA} r mean`,`${tA} r SD`,`${tA} r p(vs 1)`,
+    `${tA} RMSE mean (mm)`,`${tA} RMSE SD`,
+    `${tA} P2T diff mean (mm)`,`${tA} P2T diff SD`,
+    `${tA} phase mean (deg)`,`${tA} phase SD`,`${tA} phase p(vs 0)`,
+    `${tB} r mean`,`${tB} r SD`,`${tB} r p(vs 1)`,
+    `${tB} RMSE mean (mm)`,`${tB} RMSE SD`,
+    `${tB} P2T diff mean (mm)`,`${tB} P2T diff SD`,
+    `${tB} phase mean (deg)`,`${tB} phase SD`,`${tB} phase p(vs 0)`,
+    'Paired p(r)','Paired p(P2T diff)'];
+  const rows=pConditions.map(c=>{
+    const{mA,mB,pA_r,pA_ph,pB_r,pB_ph,pPr,pPpt}=c;
+    return[c.label,c.insertSize||'',c.masterPt.toFixed(1),
+      mean(mA.r).toFixed(3),sd(mA.r).toFixed(3),pA_r.toFixed(4),
+      mean(mA.rms).toFixed(2),sd(mA.rms).toFixed(2),
+      mean(mA.ptDiff).toFixed(2),sd(mA.ptDiff).toFixed(2),
+      mean(mA.phase).toFixed(1),sd(mA.phase).toFixed(1),pA_ph.toFixed(4),
+      mean(mB.r).toFixed(3),sd(mB.r).toFixed(3),pB_r.toFixed(4),
+      mean(mB.rms).toFixed(2),sd(mB.rms).toFixed(2),
+      mean(mB.ptDiff).toFixed(2),sd(mB.ptDiff).toFixed(2),
+      mean(mB.phase).toFixed(1),sd(mB.phase).toFixed(1),pB_ph.toFixed(4),
+      pPr.toFixed(4),pPpt.toFixed(4)];
+  });
+  const csv=[hdr,...rows].map(r=>r.map(v=>`"${v}"`).join(',')).join('\n');
+  const a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download='vxp_patient_analysis_results.csv'; a.click();
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SESSION SAVE / LOAD — Sinusoidal tab
+// ══════════════════════════════════════════════════════════════════════════════
+function saveSession(){
+  if(!conditions.length){ alert('No conditions to save yet.'); return; }
+  const session={
+    version:1,
+    tab:'sine',
+    techAName: document.getElementById('tech-a-name').value,
+    techBName: document.getElementById('tech-b-name').value,
+    conditions: conditions.map(c=>({
+      label:       c.label,
+      insertSize:  c.insertSize,
+      halfAmp:     c.halfAmp,
+      periodSec:   c.periodSec,
+      phaseDeg:    c.phaseDeg,
+      techAName:   c.techAName,
+      techBName:   c.techBName,
+      nA:          c.nA,
+      nB:          c.nB,
+      mA:          c.mA,
+      mB:          c.mB,
+      pA_r:        c.pA_r,
+      pA_ph:       c.pA_ph,
+      pB_r:        c.pB_r,
+      pB_ph:       c.pB_ph,
+      pPr:         c.pPr,
+      pPpt:        c.pPpt,
+    }))
+  };
+  const blob=new Blob([JSON.stringify(session,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='vxp_sine_session_'+new Date().toISOString().slice(0,10)+'.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function loadSession(event){
+  const file=event.target.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    try{
+      const session=JSON.parse(ev.target.result);
+      if(session.tab!=='sine'){ alert('This session file is for the Patient Trace tab. Please load it there.'); return; }
+      // Restore technique names
+      document.getElementById('tech-a-name').value=session.techAName||'Technique A';
+      document.getElementById('tech-b-name').value=session.techBName||'Technique B';
+      updateTechNames();
+      // Restore conditions — metrics only (no raw signal data, plots will be unavailable)
+      conditions.length=0;
+      document.getElementById('cond-blocks').innerHTML='';
+      session.conditions.forEach((c,idx)=>{
+        conditions.push(c);
+        addConditionBlock(idx);
+      });
+      updateTable();
+      document.getElementById('plots-section').style.display='block';
+      document.getElementById('table-wrap').style.display='block';
+      alert(`✓ Session loaded: ${session.conditions.length} condition(s) restored.\n\nNote: plots cannot be regenerated without re-uploading the original VXP files. All metrics and statistics are fully restored.`);
+    } catch(e){
+      alert('Could not load session file: '+e.message);
+    }
+  };
+  reader.readAsText(file);
+  event.target.value='';
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SESSION SAVE / LOAD — Patient trace tab
+// ══════════════════════════════════════════════════════════════════════════════
+function pSaveSession(){
+  if(!pConditions.length){ alert('No conditions to save yet.'); return; }
+  const session={
+    version:1,
+    tab:'patient',
+    techAName: document.getElementById('p-tech-a-name').value,
+    techBName: document.getElementById('p-tech-b-name').value,
+    conditions: pConditions.map(c=>({
+      label:      c.label,
+      insertSize: c.insertSize,
+      techAName:  c.techAName,
+      techBName:  c.techBName,
+      nA:         c.nA,
+      nB:         c.nB,
+      masterPt:   c.masterPt,
+      anyInvA:    c.anyInvA,
+      anyInvB:    c.anyInvB,
+      mA:         c.mA,
+      mB:         c.mB,
+      pA_r:       c.pA_r,
+      pA_ph:      c.pA_ph,
+      pB_r:       c.pB_r,
+      pB_ph:      c.pB_ph,
+      pPr:        c.pPr,
+      pPpt:       c.pPpt,
+    }))
+  };
+  const blob=new Blob([JSON.stringify(session,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='vxp_patient_session_'+new Date().toISOString().slice(0,10)+'.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function pLoadSession(event){
+  const file=event.target.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    try{
+      const session=JSON.parse(ev.target.result);
+      if(session.tab!=='patient'){ alert('This session file is for the Sinusoidal tab. Please load it there.'); return; }
+      document.getElementById('p-tech-a-name').value=session.techAName||'Technique A';
+      document.getElementById('p-tech-b-name').value=session.techBName||'Technique B';
+      pUpdateTechNames();
+      pConditions.length=0;
+      document.getElementById('p-cond-blocks').innerHTML='';
+      session.conditions.forEach((c,idx)=>{
+        pConditions.push(c);
+        pAddConditionBlock(idx);
+      });
+      pUpdateTable();
+      document.getElementById('p-plots-section').style.display='block';
+      document.getElementById('p-table-wrap').style.display='block';
+      alert(`✓ Session loaded: ${session.conditions.length} condition(s) restored.\n\nNote: plots cannot be regenerated without re-uploading the original VXP files. All metrics and statistics are fully restored.`);
+    } catch(e){
+      alert('Could not load session file: '+e.message);
+    }
+  };
+  reader.readAsText(file);
+  event.target.value='';
+}
+
+
+// ── Individual trace table renderer ─────────────────────────────────────────
+function renderIndivTable(tableId, c){
+  const el=document.getElementById(tableId); if(!el) return;
+  const tA=c.techAName, tB=c.techBName;
+  const rows=[
+    ...( c.indivA||[]).map(r=>`<tr>
+      <td>${r.examID||'—'}</td>
+      <td style="color:var(--green);font-weight:600;">${tA}</td>
+      <td>${r.r.toFixed(3)}</td>
+      <td>${r.rms.toFixed(2)}</td>
+      <td>${r.ptDiff>=0?'+':''}${r.ptDiff.toFixed(2)}</td>
+      <td>${r.phase.toFixed(1)}°</td>
+    </tr>`),
+    ...(c.indivB||[]).map(r=>`<tr>
+      <td>${r.examID||'—'}</td>
+      <td style="color:var(--orange);font-weight:600;">${tB}</td>
+      <td>${r.r.toFixed(3)}</td>
+      <td>${r.rms.toFixed(2)}</td>
+      <td>${r.ptDiff>=0?'+':''}${r.ptDiff.toFixed(2)}</td>
+      <td>${r.phase.toFixed(1)}°</td>
+    </tr>`)
+  ].join('');
+  el.innerHTML=`
+    <thead><tr>
+      <th style="padding:5px 8px;">Exam ID</th>
+      <th style="padding:5px 8px;">Technique</th>
+      <th style="padding:5px 8px;">Pearson r</th>
+      <th style="padding:5px 8px;">RMSE (mm)</th>
+      <th style="padding:5px 8px;">P2T diff (mm)</th>
+      <th style="padding:5px 8px;">Phase shift (°)</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>`;
+}
+
+// ── Individual CSV export (sine tab) ────────────────────────────────────────
+function exportIndivCSV(){
+  if(!conditions.length){ alert('No conditions to export.'); return; }
+  const hdr=['Condition','Insert size (cm)','Exam ID','Technique','Pearson r','RMSE (mm)','P2T diff (mm)','Phase shift (°)'];
+  const rows=[];
+  conditions.forEach(c=>{
+    [...(c.indivA||[]).map(r=>({...r,tech:c.techAName})),
+     ...(c.indivB||[]).map(r=>({...r,tech:c.techBName}))]
+    .forEach(r=>rows.push([c.label,c.insertSize||'',r.examID||'',r.tech,r.r.toFixed(3),r.rms.toFixed(2),(r.ptDiff>=0?'+':'')+r.ptDiff.toFixed(2),r.phase.toFixed(1)]));
+  });
+  dlCSV(hdr,rows,'vxp_individual_sine_'+new Date().toISOString().slice(0,10)+'.csv');
+}
+
+// ── Individual CSV export (patient tab) ─────────────────────────────────────
+function pExportIndivCSV(){
+  if(!pConditions.length){ alert('No conditions to export.'); return; }
+  const hdr=['Condition','Insert size (cm)','Exam ID','Technique','Pearson r','RMSE (mm)','P2T diff (mm)','Phase shift (°)'];
+  const rows=[];
+  pConditions.forEach(c=>{
+    [...(c.indivA||[]).map(r=>({...r,tech:c.techAName})),
+     ...(c.indivB||[]).map(r=>({...r,tech:c.techBName}))]
+    .forEach(r=>rows.push([c.label,c.insertSize||'',r.examID||'',r.tech,r.r.toFixed(3),r.rms.toFixed(2),(r.ptDiff>=0?'+':'')+r.ptDiff.toFixed(2),r.phase.toFixed(1)]));
+  });
+  dlCSV(hdr,rows,'vxp_individual_patient_'+new Date().toISOString().slice(0,10)+'.csv');
+}
+
+function dlCSV(hdr,rows,fname){
+  const csv=[hdr,...rows].map(r=>r.map(v=>`"${v}"`).join(',')).join('\n');
+  const a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download=fname; a.click();
+}
+
+</script>
+</body>
+</html>
